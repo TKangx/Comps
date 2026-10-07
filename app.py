@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from comps.analysis import run_comps
-from comps.data import DataError
+from comps.data import DataError, resolve_ticker
 from comps.excel import to_bytes
 from comps.multiples import MULTIPLE_REASONS, MULTIPLES, select_multiples
 from comps.peers import find_peers, score_manual_peers
@@ -32,14 +32,20 @@ def _provider(sample: bool):
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_universe(ticker: str, sample: bool):
     p = _provider(sample)
-    target = p.get_company(ticker)
+    target = p.get_company(resolve_ticker(p, ticker))
     return target, find_peers(p, target)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_manual(ticker: str, extra: tuple[str, ...], sample: bool):
     p = _provider(sample)
-    return score_manual_peers(p, p.get_company(ticker), list(extra))
+    resolved = []
+    for q in extra:
+        try:
+            resolved.append(resolve_ticker(p, q))
+        except DataError:
+            pass
+    return score_manual_peers(p, p.get_company(ticker), resolved)
 
 
 def fmt_x(v):
@@ -69,7 +75,7 @@ def fmt_big(v, ccy=""):
 with st.sidebar:
     st.title("📊 Comps Analyzer")
     with st.form("controls"):
-        ticker = st.text_input("Ticker", value=st.session_state.get("ticker", "AMZN")).strip().upper()
+        ticker = st.text_input("Company name or ticker", value=st.session_state.get("ticker", "AMZN")).strip()
         n_peers = st.slider("Number of peers", 3, 8, 5)
         sample = st.toggle("Use offline sample data", value=False,
                            help="Bundled illustrative data for AMZN & peers – for demos without internet.")
@@ -81,7 +87,7 @@ if submitted:
     st.session_state["ticker"] = ticker
     st.session_state.pop("peer_pick", None)
 if "ticker" not in st.session_state:
-    st.info("Enter a ticker in the sidebar and press **Run analysis**.")
+    st.info("Enter a company name or ticker in the sidebar and press **Run analysis**.")
     st.stop()
 ticker = st.session_state["ticker"]
 
@@ -117,10 +123,10 @@ with c1:
 with c2:
     extra_raw = st.text_input("Add other tickers (comma-separated)", placeholder="e.g. MSFT, GOOGL, WMT")
 extra = tuple(t.strip().upper() for t in extra_raw.split(",") if t.strip() and t.strip().upper() not in pick)
-manual = load_manual(ticker, extra, sample) if extra else []
+manual = load_manual(target.ticker, extra, sample) if extra else []
 if extra and len(manual) < len(extra):
-    st.warning("Some added tickers could not be loaded: "
-               + ", ".join(set(extra) - {m.ticker for m in manual}))
+    st.warning(f"{len(extra) - len(manual)} of the added names couldn't be found – check the spelling or "
+               "use the ticker.")
 
 chosen = [cand_by_ticker[t] for t in pick] + manual
 if not chosen:
@@ -150,7 +156,7 @@ st.markdown(f"**Profile: {auto_sel.profile.replace('_', ' ').title()}** — {aut
 all_keys = list(MULTIPLES)
 mult_pick = st.multiselect("Multiples shown (auto-selected; edit to taste)", options=all_keys,
                            default=auto_sel.multiples, format_func=lambda k: MULTIPLES[k].label,
-                           key=f"mults_{ticker}")
+                           key=f"mults_{target.ticker}")
 if not mult_pick:
     st.warning("Select at least one multiple.")
     st.stop()
@@ -280,7 +286,7 @@ st.dataframe(op, hide_index=True, use_container_width=True)
 
 # --------------------------------------------------------------- export
 st.subheader("5 · Export")
-st.download_button("⬇️ Download Excel comps model", data=to_bytes(res, candidates + manual),
+st.download_button("⬇️ Download Excel comps model", data=to_bytes(res, candidates + manual, query=ticker),
                    file_name=f"{target.ticker}_comps.xlsx", type="primary",
                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 st.caption("The workbook is formula-driven: overwrite any blue input or the Y/N blend flags and every "

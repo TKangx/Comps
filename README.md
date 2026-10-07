@@ -6,41 +6,116 @@ Type a ticker and get a full comparable-companies analysis:
 2. **Multiples:** it chooses the multiples that suit the business (banks get P/E and P/B, unprofitable growth names get EV/Revenue, and so on).
 3. **Relative value:** it shows where the stock trades versus the peer median and what price peer multiples imply.
 4. **Fundamentals check:** it compares growth and margins with the peers, to judge whether a premium or discount is deserved.
-5. **Excel export:** a formatted, **formula-driven** Excel comps model you can tweak or drop into a pitch.
+5. **Excel:** a formatted, **formula-driven** comps model. Type a new company into one cell and it rebuilds itself.
 
 The app runs in your browser via [Streamlit](https://streamlit.io). Data comes from Yahoo Finance via `yfinance`, so you don't need an API key.
 
 ---
 
-## Quick start (about 5 minutes)
+## Three ways to use it
 
-You need **Python 3.10+** ([python.org/downloads](https://www.python.org/downloads/)).
+| | Best for | You do |
+|---|---|---|
+| **Excel: `CompsModel.xlsx`** | Day-to-day work, pitches, tweaking numbers | Type a company in a cell → click **Run main** |
+| **Web app** | Quick looks, sharing a link with the fund | Type a company → **Run analysis** |
+| **Command line** | Batch runs | `python -m comps AMZN` |
+
+All three run the same engine. You can type a ticker (`AMZN`) or a name (`Amazon`, `Coca-Cola`).
+
+---
+
+## Excel setup (Windows, one time, about 10 minutes)
+
+1. **Install Python** from [python.org/downloads](https://www.python.org/downloads/). On the first installer screen, tick **"Add python.exe to PATH"**.
+2. **Download this repo:** green **Code** button → **Download ZIP**, then unzip it somewhere permanent (e.g. `Documents\Comps`). If you use git, you can clone it instead.
+3. **Open Command Prompt in that folder:** in File Explorer, click the address bar, type `cmd` and press Enter. Then run:
+   ```
+   pip install -r requirements.txt
+   xlwings addin install
+   ```
+4. **Open `CompsModel.xlsx`** from that folder. You'll see a new **xlwings** tab in the Excel ribbon.
+
+### Daily use
+1. Type a company name or ticker into the **yellow cell** on the Dashboard (e.g. `Nike` or `NKE`).
+2. Optionally change the number of peers, or list your own peers (`MSFT, GOOGL`).
+3. Click **xlwings** tab → **Run main**. After 10–30 seconds the status line shows ✔ and the whole model updates.
+
+Once data has loaded, everything is live Excel:
+- **Multiple dropdowns** on the Dashboard swap which multiples are shown.
+- **Y/N blend flags** choose which multiples feed the blended implied price.
+- **Blue inputs** on the Comps sheet can be overwritten with your own numbers (say, adjusted EBITDA from the 10-K). Every multiple, statistic and implied price recalculates instantly.
+
+> **Keep the file name `CompsModel.xlsx`.** It must stay in this folder, next to `CompsModel.py` and the `comps` folder. "Run main" works by finding the Python file with the same name as the workbook. To keep a copy for a pitch, use **File → Save a Copy**. The copy keeps all values and formulas.
+
+### Optional: refresh automatically when the cell changes
+1. **File → Save As → Excel Macro-Enabled Workbook** and save it as `CompsModel.xlsm` in the same folder.
+2. Press **Alt+F11**, then **Tools → References**, and tick **xlwings**.
+3. In the left panel, double-click the **Dashboard** sheet and paste:
+   ```vba
+   Private Sub Worksheet_Change(ByVal Target As Range)
+       Dim inputs As Range
+       Set inputs = Union(Me.Range("CompsInput"), Me.Range("CompsNumPeers"), Me.Range("CompsCustomPeers"))
+       If Not Intersect(Target, inputs) Is Nothing Then
+           RunPython "import comps.xl; comps.xl.refresh()"
+       End If
+   End Sub
+   ```
+4. *(Optional button)* **Insert → Module**, then paste the macro below. Back in Excel, choose **Insert → Shapes**, draw a button, right-click it → **Assign Macro** → `RefreshComps`.
+   ```vba
+   Sub RefreshComps()
+       RunPython "import comps.xl; comps.xl.refresh()"
+   End Sub
+   ```
+
+Now typing a new company and pressing Enter rebuilds the model by itself.
+
+### Optional: custom functions in any cell
+In a macro-enabled workbook (`.xlsm`):
+1. Turn on **File → Options → Trust Center → Trust Center Settings → Macro Settings → "Trust access to the VBA project object model"**.
+2. On the **xlwings** tab, type `comps.xl` in the **UDF Modules** box and click **Import Functions**.
+
+Then use these anywhere:
+
+| Formula | Returns |
+|---|---|
+| `=COMPS_TICKER("Coca-Cola")` | `KO` |
+| `=COMPS_NAME("NKE")` | `NIKE, Inc.` |
+| `=COMPS_PEERS("AMZN", 5)` | 5 peer tickers, spilling down |
+| `=COMPS_FIELD("MSFT", "ebitda_margin")` | any data field: `price`, `market_cap`, `ev`, `revenue`, `ebitda`, `revenue_growth`, … |
+| `=COMPS_MULTIPLE("MSFT", "EV/EBITDA")` | the multiple, or `NM` |
+| `=COMPS_PEER_MEDIAN("AMZN", "Fwd P/E")` | peer-median multiple |
+| `=COMPS_IMPLIED_PRICE("AMZN", "EV/EBITDA")` | implied price at the peer median |
+
+Multiple names are flexible: `EV / EBITDA`, `ev/ebitda`, `P/E`, `Fwd P/E`, `EV/Sales`, `P/B`, `P/FCF`. Results are cached for an hour, so a sheet full of formulas stays fast.
+
+### Troubleshooting
+| Problem | Fix |
+|---|---|
+| No **xlwings** tab | Run `xlwings addin install` again, then restart Excel |
+| "Python not found" / nothing happens | Run `where python` in Command Prompt and paste that path into the **Interpreter** box on the xlwings tab |
+| `ModuleNotFoundError: comps` | The workbook isn't in the repo folder; move it back next to the `comps` folder |
+| Status says ✖ Couldn't find a stock | Try the exact ticker, e.g. `BRK-B`, `RDS.A` |
+| Some multiples show NM | The company has negative/zero earnings for that metric, or it's an outlier; see the caps in row 4 of the Comps sheet |
+
+---
+
+## Web app
 
 ```bash
-git clone https://github.com/tkangx/comps.git
-cd comps
 pip install -r requirements.txt
 streamlit run app.py
 ```
+A browser tab opens at `http://localhost:8501`. Toggle **Use offline sample data** to demo without internet.
 
-A browser tab opens at `http://localhost:8501`. Enter a ticker (e.g. `AMZN`) and press **Run analysis**.
+**Share it with the whole fund (free):** go to [share.streamlit.io](https://share.streamlit.io), sign in with GitHub, click **Create app**, pick this repo and `app.py`, then **Deploy**. Members get a link and don't need to install anything. The app's **Download Excel** button produces the same `CompsModel` workbook.
 
-> No internet? Toggle **Use offline sample data** in the sidebar to demo with bundled, illustrative AMZN data.
-
-### Share it with the whole fund (free)
-
-1. Push this repo to GitHub (already done if you're reading this there).
-2. Go to [share.streamlit.io](https://share.streamlit.io), sign in with GitHub, click **Create app**.
-3. Pick this repo, branch, and `app.py` → **Deploy**.
-
-You get a URL like `https://smif-comps.streamlit.app` that any member can open without installing anything.
-
-### Command-line / Excel only
+## Command line
 
 ```bash
 python -m comps AMZN                       # auto peers, saves AMZN_comps.xlsx
-python -m comps AMZN --peers 4             # top 4 peers
+python -m comps "Coca-Cola" --peers 4      # names work too
 python -m comps AMZN --with MSFT,GOOGL,WMT # your own peer set
+python -m comps.excel CompsModel.xlsx      # regenerate the blank template (sample data)
 ```
 
 ---
@@ -88,11 +163,14 @@ A multiple is **NM** (not meaningful) when its denominator is negative or when i
 ### Excel workbook
 | Sheet | Contents |
 |---|---|
-| **Summary** | Verdict, multiples vs. peers, implied prices, peer rationale |
+| **Dashboard** | Input cell, headline stats, multiples (dropdowns) with premium and implied price, blended value, peer list with rationale |
 | **Comps** | All inputs (blue) and every multiple as a live formula, plus peer max/75th/mean/median/25th/min and the target's premium |
-| **Valuation** | Implied price at peer 25th/median/75th; toggle the yellow **Y/N** cells to change which multiples feed the blend |
+| **Valuation** | Implied price at peer 25th/median/75th for each Dashboard multiple |
 | **Peer Screen** | Every candidate with its score breakdown |
-| **Notes** | Methodology and colour legend |
+| **Lists** | Lookup table behind the dropdowns (edit the "why" text freely) |
+| **Notes** | How-to and methodology |
+
+Python only writes the blue cells, through named ranges such as `CompsInput` and `CompsData`. Everything else is a formula, so you can restyle the sheets or add your own calculations, and refreshes won't overwrite them.
 
 ## Limitations
 - Yahoo data can lag filings, and Yahoo does not adjust for one-offs, leases, minority interest or preferreds. **Check key inputs against the 10-K/10-Q before presenting.**
@@ -105,4 +183,4 @@ A multiple is **NM** (not meaningful) when its denominator is negative or when i
 pip install pytest
 python -m pytest
 ```
-The tests run fully offline using `comps/sample.py` and a fake Yahoo client.
+The tests run fully offline. They use `comps/sample.py`, a fake Yahoo client and a fake xlwings workbook, and if LibreOffice is installed they also recalculate the Excel model to check for formula errors.

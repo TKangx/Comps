@@ -3,3 +3,4 @@ pandas>=2.0
 openpyxl>=3.1
 streamlit>=1.40
 plotly>=5.20
+xlwings>=0.30; platform_system == "Windows" or platform_system == "Darwin"

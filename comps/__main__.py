@@ -40,7 +40,7 @@ def main(argv=None) -> int:
     print(f"\n{r.verdict}\n")
 
     out = args.out or f"{r.target.ticker}_comps.xlsx"
-    build_workbook(r, a.candidates).save(out)
+    build_workbook(r, a.candidates, query=args.ticker).save(out)
     print(f"Excel workbook saved to {out}")
     return 0
 

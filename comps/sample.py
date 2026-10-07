@@ -59,6 +59,11 @@ class SampleProvider:
             raise DataError(f"'{t}' is not in the offline sample set ({', '.join(SAMPLE)}).")
         return SAMPLE[t]
 
+    def search(self, query: str) -> list[dict]:
+        q = query.strip().lower()
+        return [{"symbol": c.ticker, "name": c.name, "quote_type": "EQUITY", "exchange": ""}
+                for c in SAMPLE.values() if q in c.name.lower() or q == c.ticker.lower()]
+
     def industry_peers(self, industry_key: str) -> list[str]:
         return INDUSTRY_TOP.get(industry_key, [])
 

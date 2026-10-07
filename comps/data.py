@@ -108,6 +108,7 @@ class CompanyData:
 
 class DataProvider(Protocol):
     def get_company(self, ticker: str) -> CompanyData: ...
+    def search(self, query: str) -> list[dict]: ...
     def industry_peers(self, industry_key: str) -> list[str]: ...
     def sector_peers(self, sector_key: str) -> list[str]: ...
     def recommended_symbols(self, ticker: str) -> list[str]: ...
@@ -262,6 +263,18 @@ class YahooProvider:
             return (fy1 or fy0) * fx
         return None
 
+    # ---- Name -> ticker search ----------------------------------------------
+    def search(self, query: str) -> list[dict]:
+        """Yahoo symbol search. Returns [{'symbol', 'name', 'quote_type', 'exchange'}]."""
+        try:
+            quotes = self.yf.Search(query, max_results=8, news_count=0, lists_count=0,
+                                    raise_errors=False).quotes or []
+        except Exception:
+            return []
+        return [{"symbol": q.get("symbol"), "name": q.get("longname") or q.get("shortname") or "",
+                 "quote_type": q.get("quoteType") or "", "exchange": q.get("exchange") or ""}
+                for q in quotes if q.get("symbol")]
+
     # ---- Peer candidate sources ---------------------------------------------
     def industry_peers(self, industry_key: str) -> list[str]:
         if not industry_key:
@@ -318,3 +331,40 @@ def fetch_many(provider: DataProvider, tickers: Iterable[str], max_workers: int 
             if c is not None:
                 out[t] = c
     return out
+
+
+def _looks_like_ticker(q: str) -> bool:
+    """'AMZN', 'BRK-B', 'SAP.DE' -> True; 'Amazon', 'coca cola' -> False."""
+    return bool(q) and " " not in q and len(q) <= 10 and q == q.upper() and any(ch.isalpha() for ch in q)
+
+
+def resolve_ticker(provider: DataProvider, query: str) -> str:
+    """Turn whatever the user typed ('AMZN', 'amazon', 'Coca-Cola') into a ticker.
+
+    Upper-case input is treated as a ticker first; anything else is searched by name
+    first (so 'Ford' finds F rather than the unrelated ticker FORD)."""
+    q = (query or "").strip()
+    if not q:
+        raise DataError("Enter a company name or ticker.")
+
+    def try_ticker():
+        try:
+            provider.get_company(q.upper())
+            return q.upper()
+        except DataError:
+            return None
+
+    def try_search():
+        hits = [h for h in provider.search(q) if (h.get("quote_type") or "EQUITY").upper() == "EQUITY"]
+        if not hits:
+            return None
+        # prefer primary (suffix-free) listings, keep Yahoo's relevance order otherwise
+        hits.sort(key=lambda h: "." in h["symbol"])
+        return hits[0]["symbol"].upper()
+
+    order = (try_ticker, try_search) if _looks_like_ticker(q) else (try_search, try_ticker)
+    for fn in order:
+        t = fn()
+        if t:
+            return t
+    raise DataError(f"Couldn't find a stock matching '{q}'. Try the exact ticker symbol.")

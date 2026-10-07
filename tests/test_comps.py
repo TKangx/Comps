@@ -119,7 +119,7 @@ def test_manual_peers_respected():
 def test_excel_structure_and_formulas(tmp_path):
     a = analyze("AMZN", provider=SampleProvider())
     wb = build_workbook(a.result, a.candidates)
-    assert wb.sheetnames == ["Summary", "Comps", "Valuation", "Peer Screen", "Notes"]
+    assert wb.sheetnames == ["Dashboard", "Comps", "Valuation", "Peer Screen", "Lists", "Notes"]
     path = tmp_path / "out.xlsx"
     wb.save(path)
     ws = load_workbook(path)["Comps"]
@@ -129,6 +129,7 @@ def test_excel_structure_and_formulas(tmp_path):
     assert any("PERCENTILE(" in f for f in formulas)
     # target is row 6, peer stats exclude it (start at row 7)
     assert any("MEDIAN(" in f and "7:" in f for f in formulas)
+    assert ws["A6"].value == "AMZN" and ws["A7"].value == "BABA"
 
 
 # ---------------------------------------------------------------- Yahoo parsing

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .analysis import CompsResult, run_comps
-from .data import DataProvider
+from .data import DataProvider, resolve_ticker
 from .peers import PeerScore, find_peers, score_manual_peers
 
 
@@ -15,14 +15,22 @@ class Analysis:
     candidates: list[PeerScore]   # every peer candidate considered, best first
 
 
-def analyze(ticker: str, provider: Optional[DataProvider] = None, n_peers: int = 5,
+def _try_resolve(provider: DataProvider, query: str) -> Optional[str]:
+    """Resolve a custom peer, skipping (rather than failing on) anything unrecognised."""
+    try:
+        return resolve_ticker(provider, query)
+    except Exception:
+        return None
+
+
+def analyze(query: str, provider: Optional[DataProvider] = None, n_peers: int = 5,
             manual_peers: Optional[list[str]] = None) -> Analysis:
     if provider is None:
         from .data import YahooProvider
         provider = YahooProvider()
-    target = provider.get_company(ticker)
+    target = provider.get_company(resolve_ticker(provider, query))
     if manual_peers:
-        chosen = score_manual_peers(provider, target, manual_peers)
+        chosen = score_manual_peers(provider, target, [t for t in (_try_resolve(provider, q) for q in manual_peers) if t])
         candidates = chosen + [c for c in find_peers(provider, target)
                                if c.ticker not in {s.ticker for s in chosen}]
     else:

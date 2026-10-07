@@ -128,7 +128,8 @@ def _verdict(res: CompsResult) -> str:
     else:
         stance = f"at a {-p:.0%} discount to"
     names = ", ".join(c.ticker for c in res.peers)
-    lines = [f"{t.ticker} trades {stance} the peer median on its key multiples (peers: {names})."]
+    lines = [f"On its key multiples, {t.ticker} trades {stance} the peer median "
+             f"(median across those multiples; peers: {names})."]
 
     op = res.operating
     g, m = op.get("revenue_growth", {}), op.get("ebitda_margin", {})
